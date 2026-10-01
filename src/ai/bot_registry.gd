@@ -26,6 +26,22 @@ const ENTRIES: Array[Dictionary] = [
 		"desc_zh": "预判射击 + 预判翻滚：读取你的朝向、控制交战距离、利用掩体与抓钩，"
 			+ "并根据你的状态在近战与枪械之间切换。",
 	},
+	{
+		"id": "cakegame_v1_pro",
+		"name": "CakeGame AI Bot v1 pro",
+		"script": "res://src/ai/bot_v1_pro.gd",
+		"tag": "PRO",
+		"desc_en": "Same senses as v1, but it banks its rounds: it fires into the "
+			+ "windows where you physically cannot dodge - mid roll, after a roll, "
+			+ "mid swing, under hook stun - and walks instead of spraying when you "
+			+ "can. Adds scored dodging that lands somewhere useful, melee-arc "
+			+ "escapes, a grapple combo, and movement that accounts for every "
+			+ "opponent aiming at it, not just the nearest one.",
+		"desc_zh": "感官与 v1 相同，但会把子弹攒在刀刃上：只在物理上当真躲不掉时开火——"
+			+ "翻滚途中、翻滚后冷却、挥刀僵直、被钩眩晕；你能躲的时候就走位而不是扫射。"
+			+ "另外翻滚会计算落点、会脱离近战挥砍弧线、会用抓钩打连招作为与脱战手段，"
+			+ "走位也会把所有瞄着它的对手一起算进去，而不是只盯着最近那个。",
+	},
 ]
 
 

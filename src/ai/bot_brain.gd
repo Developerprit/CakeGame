@@ -41,6 +41,7 @@ var _time: float = 0.0
 var _think_accum: float = 0.0
 var _prev_target_vel: Vector2 = Vector2.ZERO
 var _prev_target: ActorBody = null
+var _prev_sample_t: float = -1.0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -78,6 +79,7 @@ func dispose() -> void:
 	actor = null
 	target = null
 	_prev_target = null
+	_prev_sample_t = -1.0
 
 
 # ===========================================================================
@@ -145,14 +147,32 @@ func has_line_to(pos: Vector2) -> bool:
 ## term is what makes the bot feel uncanny: if the target is actively changing
 ## direction (accelerating), a purely linear lead aims consistently behind a
 ## strafing opponent. `_prev_target_vel` gives a cheap acceleration estimate.
+## The `_prev_*` snapshot below USED TO be written nowhere, so `_prev_target == t`
+## was never true and this second-order term silently contributed zero - i.e. the
+## "uncanny lead" the comment advertises had in fact been dead since it was
+## written, and the bot led every strafing opponent with plain first-order maths.
+## It is updated at the END of the call so every caller sees the previous sample,
+## and the divisor is the real elapsed time rather than `AI_THINK_INTERVAL`,
+## because this gets called from `update_aim` (60 Hz) as well as from `decide()`
+## (16.7 Hz) and a hardcoded divisor would over-estimate the acceleration 3.6x
+## on the aim path.
+##
+## The estimate is additionally clamped: two samples one frame apart can differ by
+## an entire sprint's worth of velocity after a knockback, and an unclamped second
+## order term then throws the aim point tens of pixels past the target.
 func lead_point(t: ActorBody, from: Vector2, speed: float) -> Vector2:
 	if t == null or not is_instance_valid(t):
 		return from
 	var dist: float = from.distance_to(t.global_position)
 	var tof: float = dist / maxf(1.0, speed)
 	var acc := Vector2.ZERO
-	if _prev_target == t:
-		acc = (t.velocity - _prev_target_vel) / maxf(0.001, Balance.AI_THINK_INTERVAL)
+	if _prev_target == t and _prev_sample_t >= 0.0:
+		var elapsed: float = maxf(0.001, _time - _prev_sample_t)
+		acc = (t.velocity - _prev_target_vel) / elapsed
+		acc = acc.limit_length(Balance.ACCEL * 2.0)
+	_prev_target = t
+	_prev_target_vel = t.velocity
+	_prev_sample_t = _time
 	var p: Vector2 = t.global_position
 	p += t.velocity * tof * Balance.AI_AIM_LEAD_WEIGHT
 	p += 0.5 * acc * tof * tof * Balance.AI_AIM_SECOND_ORDER

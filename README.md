@@ -68,13 +68,55 @@ The hook is the movement verb: it yanks you toward a wall **and** preserves mome
 
 ## The bots
 
-`CakeGame AI Bot v1` (`cakegame_v1`) is the only bot shipped. It re-plans every 0.06 s, but reacts on a 0.12 s delay — deliberately superhuman, never instant.
+Two bots ship. To switch: Settings → **Bot version**.
+
+`CakeGame AI Bot v1` (`cakegame_v1`) is the original, and is still the default. It re-plans every 0.06 s, but reacts on a 0.12 s delay — deliberately superhuman, never instant.
 
 - **Predictive aim.** Leads the target using bullet speed and adds a second-order term for the target's acceleration, so it does not keep shooting where you stopped.
 - **Predictive dodging.** Reads whether you are pointing at it (0.22 rad cone) and rolls on a 0.10 s reaction.
 - **Range control.** Holds a preferred 58–92 px band, drops to melee inside 20 px, and disengages below 30 HP.
 - **Cover and pathing.** Breaks a stalemate against a corner after 0.7 s, refreshes A* every 0.32 s, and unsticks itself after three failed 1.5 s windows.
 - **Hunting.** Keeps extrapolating a target for 3.5 s after losing visual contact before sweeping for the enemy side, instead of orbiting a corpse.
+
+`CakeGame AI Bot v1 pro` (`cakegame_v1_pro`) keeps v1's senses and changes what it does with them. The full argument is in `Planning/AI-Bot-v1-Pro.md`; the short version is one observation about the numbers:
+
+> At the 58–92 px band v1 already holds, the target subtends 4.6° while the gun's cone is 3–6°. Even with bloom maxed the shot lands ~77% of the time on something that stays still — so **better aim is not where the headroom is**. What loses an exchange is that a target moving 57.6 px/s covers 16 px during the 0.28 s flight time, and that is 2.2× its own silhouette. `P(hit) = P(geometric) × P(he does not move out of the way)`, and the second factor dominates.
+
+So v1 pro **banks its rounds**: it fires into windows where dodging is physically impossible and walks instead of spraying when it is not. Every one of those windows is readable off the opponent's animation — nothing hidden is consulted.
+
+- **Commitment windows.** Locked targets (mid roll, the 0.90 s after a roll ends, mid swing, under hook stun) get focused fire; everything else gets positioning.
+- **Scored dodging.** A roll covers ~45 px, so the landing is chosen, not random — v1 could spend its own 1.32 s roll lockout to end up in another part of the same corridor.
+- **Fire discipline.** A geometric hit gate turns victory-range sprays into repositioning, which is why it deals more damage on FEWER shots.
+- **Melee answers.** Melee is 22 damage, the biggest number in the game, and v1 never stepped out of a windup. It also stops swinging into targets that can simply roll away.
+- **Multi-threat movement.** v1's steering only ever saw one target; v1 pro scores where it stands against everyone aiming at it.
+- **Hook combos.** Guaranteed connect on a locked target → 8 damage + 0.22 s stun → close → swing. And a wall hook to disengage, which covers ~90 px versus a roll's 45.
+
+### Measured, not asserted
+
+`tests/bot_duel.tscn` runs a headless 1v1 between them — 24 seeds × 2 sides so neither brain owns a spawn side — with deaths respawned back into rifle range:
+
+```
+godot --headless --path . --fixed-fps 60 res://tests/bot_duel.tscn
+
+48 duels  (17 decided, 31 draws)
+cakegame_v1         5-12-31   win 10.4 pct (all)  win 29.4 pct (decided)
+                    K/D 0.61   out-damaged opponent in 14.6 pct of duels
+                    damage 3184   shots 797   damage per shot 33.3 of 12
+cakegame_v1_pro    12-5-31   win 25.0 pct (all)  win 70.6 pct (decided)
+                    K/D 1.64   out-damaged opponent in 37.5 pct of duels
+                    damage 3604   shots 756   damage per shot 39.7 of 12
+```
+
+Three things to read off that:
+
+1. **Fewer shots, more damage.** 756 vs 797 rounds fired for +13% damage. That is the fire gate working exactly as designed — the rounds that used to miss are now spent walking instead.
+2. **19% better damage-per-shot** (39.7% of a bullet's nominal 12 vs 33.3%). Since duels include plenty of geometry-corner misses on both sides, this is the cleanest single measure of "did it stop wasting rounds".
+3. **Decisive duels 12-5**, K/D 1.64 vs 0.61. Most duels end 0-0 because two competent bots rarely kill each other in 40 s, so wins alone are a noisy signal — which is why damage is tracked alongside.
+
+Two methodological notes, because a benchmark that quietly lies is worse than no benchmark:
+
+- The harness **pins the global RNG** (`seed(20261001)`). `ActorBody.fire_bullet()` spreads with the global `randf_range`, not the per-brain RNG, so unseeded runs of *identical code* produced 12-2 and 6-6. It now reproduces byte-for-byte.
+- It samples **engagement every frame** from outside both brains (mutual line of sight, mean distance). An early configuration returned a run of 0-0 duels with zero shots fired, and without that column "they never met" and "they fought to a standstill" look identical.
 
 The bot list is data, not code. Adding `CakeGame AI Bot v2` means dropping a script under `src/ai/` and adding one dictionary to `BotRegistry.ENTRIES` — the Settings dropdown reads that table, so no UI change is needed.
 
@@ -160,7 +202,7 @@ src/
   core/         enums, balance, event bus, config, runtime InputMap, scene router, audio
   actors/       actor body + state machine, player, bot, combat, bullets, hook, FX
   states/       shared actor states
-  ai/           bot brain base, registry, cakegame_v1
+  ai/           bot brain base, registry, cakegame_v1, cakegame_v1_pro
   world/        arena, tile set builder, seeded map generator, camera rig
   ui/           pixel theme, main menu, settings, lobby, HUD, pause menu, game root
 server/         deployable signalling (api.php) and relay (relay.node.js)
