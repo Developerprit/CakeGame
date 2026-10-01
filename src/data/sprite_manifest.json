@@ -1,0 +1,192 @@
+{
+  "fighter": {
+    "frame_w": 24,
+    "frame_h": 24,
+    "cols": 6,
+    "rows": 72,
+    "facings": 8,
+    "atlas": {
+      "cyan": "res://assets/sprites/fighter_cyan.png",
+      "ember": "res://assets/sprites/fighter_ember.png"
+    },
+    "anim_rows": {
+      "idle": 0,
+      "run": 8,
+      "melee": 16,
+      "gun_idle": 24,
+      "gun_fire": 32,
+      "roll": 40,
+      "hook": 48,
+      "hurt": 56,
+      "dead": 64
+    },
+    "anim_frames": {
+      "idle": 2,
+      "run": 6,
+      "melee": 4,
+      "gun_idle": 2,
+      "gun_fire": 3,
+      "roll": 5,
+      "hook": 3,
+      "hurt": 2,
+      "dead": 5
+    },
+    "anim_mode": {
+      "idle": "loop",
+      "run": "loop",
+      "melee": "once",
+      "gun_idle": "loop",
+      "gun_fire": "once",
+      "roll": "once",
+      "hook": "once",
+      "hurt": "once",
+      "dead": "hold"
+    }
+  },
+  "tiles": {
+    "frame_w": 16,
+    "frame_h": 16,
+    "cols": 6,
+    "rows": 4,
+    "atlas": "res://assets/sprites/tiles.png",
+    "index": {
+      "hazard_h": [
+        0,
+        0
+      ],
+      "hazard_v": [
+        1,
+        0
+      ],
+      "decal_crack": [
+        2,
+        0
+      ],
+      "decal_dot": [
+        3,
+        0
+      ],
+      "decal_stripe": [
+        4,
+        0
+      ],
+      "decal_warn": [
+        5,
+        0
+      ],
+      "wall_top": [
+        0,
+        1
+      ],
+      "wall_mid": [
+        1,
+        1
+      ],
+      "wall_bot": [
+        2,
+        1
+      ],
+      "wall_dark_top": [
+        3,
+        1
+      ],
+      "wall_dark_mid": [
+        4,
+        1
+      ],
+      "wall_dark_bot": [
+        5,
+        1
+      ],
+      "floor_a": [
+        0,
+        2
+      ],
+      "floor_b": [
+        1,
+        2
+      ],
+      "floor_c": [
+        2,
+        2
+      ],
+      "floor_d": [
+        3,
+        2
+      ],
+      "floor_plate": [
+        4,
+        2
+      ],
+      "floor_grate": [
+        5,
+        2
+      ],
+      "crate": [
+        0,
+        3
+      ],
+      "barrel": [
+        1,
+        3
+      ],
+      "pillar": [
+        2,
+        3
+      ],
+      "spawn_human": [
+        3,
+        3
+      ],
+      "spawn_bot": [
+        4,
+        3
+      ],
+      "vent": [
+        5,
+        3
+      ]
+    }
+  },
+  "fx": {
+    "frame_w": 24,
+    "frame_h": 24,
+    "cols": 6,
+    "rows": 6,
+    "atlas": "res://assets/sprites/fx.png",
+    "index": {
+      "bullet": [
+        0,
+        0
+      ],
+      "bullet_heavy": [
+        0,
+        1
+      ],
+      "muzzle": [
+        0,
+        2
+      ],
+      "spark": [
+        0,
+        3
+      ],
+      "blood": [
+        0,
+        4
+      ],
+      "hook_head": [
+        0,
+        5
+      ]
+    },
+    "counts": {
+      "bullet": 3,
+      "bullet_heavy": 2,
+      "muzzle": 4,
+      "spark": 6,
+      "blood": 6,
+      "hook_head": 3
+    }
+  }
+}

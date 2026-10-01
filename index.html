@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CakeGame — 俯视像素动作对战 / 1–3 真人 vs 1–2 算法极强 AI Bot</title>
+<meta name="description" content="CakeGame 是一个用 Godot 4.5 做的 2D 俯视像素动作对战游戏：1~3 名真人对抗 1~2 个只按一档难度出手的 AI Bot，支持局域网 / 跨网房间码联机。单文件 Windows 可执行版，开箱即玩。">
+<link rel="icon" href="promo/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0f14;
+  --bg2:#14161d;
+  --panel:#1a1d26;
+  --line:#2c3140;
+  --line2:#3c4356;
+  --text:#e6ebf2;
+  --dim:#8b95a8;
+  --cyan:#4fd6f0;
+  --cyan-d:#1d5a6b;
+  --ember:#f0714f;
+  --ember-d:#6b2f1d;
+  --green:#7dd87d;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  --pixel:"Press Start 2P","JetBrains Mono",monospace;
+  --pad:clamp(18px,4vw,56px);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--mono);font-size:15px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+img{display:block;max-width:100%}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--pad)}
+.mono-label{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+.pixel{font-family:var(--pixel);line-height:1.5}
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky;top:0;z-index:50;
+  background:rgba(14,15,20,.92);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.nav-in{display:flex;align-items:center;gap:18px;height:58px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--pixel);font-size:13px;letter-spacing:.02em}
+.brand i{
+  width:16px;height:16px;background:var(--cyan);display:block;
+  box-shadow:0 16px 0 -3px var(--cyan),0 -16px 0 -3px var(--cyan),16px 0 0 -3px var(--cyan),-16px 0 0 -3px var(--cyan);
+}
+.nav-links{display:flex;gap:18px;margin-left:auto;flex-wrap:wrap}
+.nav-links a{color:var(--dim);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.nav-links a:hover{color:var(--cyan);text-decoration:none}
+.nav .btn{margin-left:6px}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-block;padding:11px 20px;border:2px solid var(--cyan);
+  color:var(--cyan);background:transparent;font-family:var(--mono);
+  font-size:12px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;
+  transition:background .12s,color .12s;
+}
+.btn:hover{background:var(--cyan);color:#06121a;text-decoration:none}
+.btn.ghost{border-color:var(--line2);color:var(--text)}
+.btn.ghost:hover{background:var(--line2);color:#fff}
+
+/* ---------- hero ---------- */
+.hero{padding:clamp(40px,7vw,86px) 0 clamp(28px,4vw,48px);border-bottom:1px solid var(--line)}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(24px,5vw,60px);align-items:center}
+.tag{display:inline-block;border:1px solid var(--cyan-d);color:var(--cyan);padding:4px 10px;font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+h1{font-family:var(--pixel);font-size:clamp(30px,5.4vw,60px);margin:18px 0 0;color:#fff}
+h1 span{color:var(--cyan)}
+.h1-zh{font-size:clamp(15px,2vw,20px);letter-spacing:.34em;color:var(--dim);margin:14px 0 0;font-family:var(--mono)}
+.lede{margin:22px 0 0;color:var(--dim);max-width:56ch}
+.lede b{color:var(--text);font-weight:400;border-bottom:1px solid var(--cyan-d)}
+.cta{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+
+/* screenshot frame */
+.screen{
+  border:2px solid var(--line2);background:#000;padding:8px;position:relative;
+}
+.screen::after{
+  content:"";position:absolute;inset:8px;border:1px solid var(--line);pointer-events:none;
+}
+.screen img{width:100%;image-rendering:pixelated;border:1px solid var(--line)}
+.screen-cap{
+  position:absolute;left:8px;bottom:8px;background:var(--bg2);border:1px solid var(--line2);
+  padding:4px 8px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+}
+.badge{
+  position:absolute;right:-2px;top:-2px;background:var(--cyan);color:#06121a;
+  font-family:var(--pixel);font-size:9px;padding:6px 8px;letter-spacing:.04em;
+}
+
+/* ---------- stat strip ---------- */
+.strip{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.strip div{padding:22px var(--pad);border-right:1px solid var(--line)}
+.strip div:last-child{border-right:0}
+.strip b{display:block;font-family:var(--pixel);font-size:clamp(13px,1.6vw,17px);color:var(--cyan);margin-bottom:8px}
+.strip small{color:var(--dim);font-size:12px;letter-spacing:.06em}
+
+/* ---------- sections ---------- */
+section{padding:clamp(48px,7vw,96px) 0;border-bottom:1px solid var(--line)}
+.sec-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+h2{font-family:var(--pixel);font-size:clamp(17px,2.6vw,28px);margin:0;color:#fff}
+h2 em{font-style:normal;color:var(--cyan)}
+.sec-en{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+.sec-zh{color:var(--dim);font-size:14px;letter-spacing:.16em;margin:0 0 38px}
+.sec-zh::before{content:"▍ ";color:var(--cyan-d)}
+
+/* ---------- spec table ---------- */
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-size:11px;letter-spacing:.18em;text-transform:uppercase;border-bottom-color:var(--line2)}
+td:first-child{color:var(--cyan);white-space:nowrap}
+td small{display:block;color:var(--dim);font-size:12px;margin-top:3px}
+.row:hover td{background:var(--bg2)}
+
+/* ---------- cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.card{background:var(--bg);padding:26px 22px}
+.card:hover{background:var(--bg2)}
+.card h3{font-family:var(--pixel);font-size:12px;margin:0 0 12px;color:#fff}
+.card .num{color:var(--cyan);font-size:12px;letter-spacing:.18em;display:block;margin-bottom:14px}
+.card p{margin:0;color:var(--dim);font-size:13.5px}
+.card p b{color:var(--text);font-weight:400}
+
+/* ---------- bots ---------- */
+.bots{display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(24px,4vw,54px);align-items:start}
+.bot-panel{border:1px solid var(--line2);background:var(--panel);padding:24px}
+.bot-panel h4{font-family:var(--pixel);font-size:11px;color:var(--ember);margin:0 0 6px}
+.bot-panel .sub{color:var(--dim);font-size:12.5px;margin:0 0 18px}
+.bot-row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.bot-row:last-child{border-bottom:0}
+.bot-row span:first-child{color:var(--dim)}
+.bot-row span:last-child{color:var(--ember);text-align:right}
+
+/* ---------- transport ---------- */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}
+.step{border:1px solid var(--line);padding:20px;position:relative;background:var(--bg)}
+.step i{font-family:var(--pixel);font-size:20px;color:var(--cyan);font-style:normal}
+.step h4{margin:12px 0 6px;font-size:13px;letter-spacing:.14em;text-transform:uppercase}
+.step p{margin:0;color:var(--dim);font-size:13px}
+.step .tag-fallback{position:absolute;right:12px;top:12px;font-size:9px;letter-spacing:.14em;color:var(--ember);border:1px solid var(--ember-d);padding:2px 6px}
+
+/* ---------- gallery ---------- */
+.gal{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.gal figure{margin:0;border:1px solid var(--line);background:#000;padding:5px}
+.gal img{width:100%;image-rendering:pixelated}
+.gal figcaption{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);padding:7px 4px 2px}
+
+/* ---------- download ---------- */
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4vw,54px);align-items:center}
+.dl-box{border:2px solid var(--cyan);padding:26px;background:var(--bg2)}
+.dl-box .big{font-family:var(--pixel);font-size:clamp(16px,2.4vw,24px);color:var(--cyan);margin:10px 0}
+.dl-list{list-style:none;padding:0;margin:20px 0 0;font-size:13px;color:var(--dim)}
+.dl-list li{padding:7px 0;border-top:1px solid var(--line)}
+.dl-list li b{color:var(--text);font-weight:400}
+
+/* ---------- honest notes ---------- */
+.notes{border-left:3px solid var(--ember-d);padding-left:20px;color:var(--dim);font-size:13.5px}
+.notes p{margin:0 0 12px}
+.notes p:last-child{margin-bottom:0}
+.notes b{color:var(--text);font-weight:400}
+
+/* ---------- footer ---------- */
+footer{padding:44px 0;color:var(--dim);font-size:12.5px}
+.foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+.foot .links a{margin-left:16px}
+
+@media (max-width:960px){
+  .hero-grid,.bots,.dl{grid-template-columns:1fr}
+  .strip{grid-template-columns:repeat(2,1fr)}
+  .strip div:nth-child(2){border-right:0}
+  .strip div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .grid,.steps,.gal{grid-template-columns:1fr 1fr}
+}
+@media (max-width:640px){
+  .nav-links{display:none}
+  .grid,.steps,.gal,.strip{grid-template-columns:1fr}
+  table th:nth-child(2),table td:nth-child(2){display:none}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><i></i>CAKEGAME</a>
+    <div class="nav-links">
+      <a href="#play">玩法 / Play</a>
+      <a href="#bots">Bot / Bots</a>
+      <a href="#net">联机 / Multiplayer</a>
+      <a href="#screens">截图 / Screens</a>
+      <a href="#download">下载 / Download</a>
+    </div>
+    <a class="btn" href="#download">下载 exe</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="tag">Godot 4.5 · AVAILABLE LICENSE</span>
+      <h1>1–3 真人<br><span>VS</span> 1–2 Bot</h1>
+      <p class="h1-zh">俯视像素动作对战</p>
+      <p class="lede">
+        CakeGame 是<b>俯视视角的像素动作乱斗</b>。一个键是越障、一个键是脱身、一个键是贴脸 —— 近战、手枪和抓钩，
+        外加一个<b>只按同一档难度出手</b>的陪练 Bot。没有难度滑条，因为难度滑条的本质是交付一个故意更弱的对手。
+      </p>
+      <div class="cta">
+        <a class="btn" href="#download">下载 Windows 版</a>
+        <a class="btn ghost" href="#play">看看怎么玩</a>
+      </div>
+    </div>
+    <div class="screen">
+      <span class="badge">60 FPS</span>
+      <img src="promo/hero.png" alt="CakeGame 对局实机画面：两名角色在竞技场中对峙，血条与弹药数显示在画面下方">
+      <span class="screen-cap">实际渲染帧 / real frame</span>
+    </div>
+  </div>
+</header>
+
+<div class="strip">
+  <div><b>1–3 vs 1–2</b><small>真人打 Bot，队伍制</small></div>
+  <div><b>100 HP</b><small>5 分制团队积分赛</small></div>
+  <div><b>Listen Server</b><small>无专用服务器</small></div>
+  <div><b>97 MB</b><small>单文件 exe，内嵌全部资源</small></div>
+</div>
+
+<section id="play">
+  <div class="wrap">
+    <div class="sec-head"><h2>操作 / <em>Controls</em></h2><span class="sec-en">mouse aim · keyboard</span></div>
+    <p class="sec-zh">角色永远朝向你的准星来源，移动和瞄准完全解耦 —— 这也是翻滚能读成「技术」而不是「手滑」的原因。</p>
+    <table>
+      <tr class="row"><th>动作 / Action</th><th>键鼠 / Keyboard &amp; mouse</th><th>手柄 / Gamepad</th></tr>
+      <tr class="row"><td>移动 / Move<small>WASD，方向键同样可用</small></td><td>W A S D · ↑↓←→</td><td>左摇杆 / 十字键</td></tr>
+      <tr class="row"><td>瞄准 / Aim<small>角色始终朝向准星</small></td><td>鼠标指针</td><td>右摇杆</td></tr>
+      <tr class="row"><td>近战 / Melee</td><td>鼠标右键</td><td>LB</td></tr>
+      <tr class="row"><td>拔枪 / 收枪</td><td>E</td><td>X</td></tr>
+      <tr class="row"><td>开火 / Fire<small>需要先拔枪</small></td><td>鼠标左键</td><td>RB</td></tr>
+      <tr class="row"><td>抓钩 / Hook<small>拉自己，也把人拽过来</small></td><td>Q</td><td>Y</td></tr>
+      <tr class="row"><td>翻滚 / Roll<small>0.30 秒无敌帧</small></td><td>Shift</td><td>B</td></tr>
+      <tr class="row"><td>换弹 / 暂停</td><td>R · Esc</td><td>左摇杆 · Start</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="combat">
+  <div class="wrap">
+    <div class="sec-head"><h2>战斗 / <em>Combat</em></h2><span class="sec-en">every number in one file</span></div>
+    <p class="sec-zh">所有数值集中在 <b>src/core/balance.gd</b>，1 格 = 16 px = 1 米，每个距离都带 m/s 换算注释，方便心算校验。</p>
+    <div class="grid">
+      <div class="card">
+        <span class="num">01</span>
+        <h3>近战 MELEE</h3>
+        <p>22 伤害，24 px 触及，±0.95 弧度扇形。总动作 0.38 s，冷却 0.55 s，附带 150 击退。<b>顿帧 0.075 s</b> 让每一次命中都咬得住。</p>
+      </div>
+      <div class="card">
+        <span class="num">02</span>
+        <h3>手枪 GUN</h3>
+        <p>12 伤害，弹速 320 px/s，12 发弹匣，换弹 1.4 s，每发扩 3°。<b>必须先拔枪</b>才能开火 —— 收枪跑图，拔枪交火。</p>
+      </div>
+      <div class="card">
+        <span class="num">03</span>
+        <h3>抓钩 HOOK</h3>
+        <p>1200 px/s² 拉力，松手保留 <b>62% 冲量</b>。同一个键既是越障、又是脱身、又是贴脸，是这套移动系统的动词。</p>
+      </div>
+      <div class="card">
+        <span class="num">04</span>
+        <h3>翻滚 ROLL</h3>
+        <p>0.42 s 位移 132 px/s，其中 <b>0.30 s 无敌</b>，冷却 0.90 s。预判对枪时，这一下就是全部的胜负。</p>
+      </div>
+      <div class="card">
+        <span class="num">05</span>
+        <h3>赛制 MATCH</h3>
+        <p>团队积分 <b>先到 5 分</b>，回合 3 s 倒计时、3.4 s 慢镜。默认死亡不重生：<b>最后一方站着</b>才算赢下回合。</p>
+      </div>
+      <div class="card">
+        <span class="num">06</span>
+        <h3>地图 MAP</h3>
+        <p>内置 34×34 竞技场（视线可预期），或输入种子生成 56×56 程序化地图。<b>种子在会话内锁存</b>，改一次就自动失效。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bots">
+  <div class="wrap bots">
+    <div>
+      <div class="sec-head"><h2>Bot / <em>CakeGame AI Bot v1</em></h2></div>
+      <p class="sec-zh">难度恒定，不可调节。它每 0.06 s 重规划一次，但反应延迟是 0.12 s —— 刻意做到超人，绝不做到瞬发。</p>
+      <div class="bot-panel">
+        <h4>CakeGame AI Bot v1</h4>
+        <p class="sub">设置里可选的 Bot 版本 · 内置唯一一个 · 难度写在 Balance 里，玩家碰不到</p>
+        <div class="bot-row"><span>预判射击 / predictive aim</span><span>子弹速度 + 加速度二阶提前量</span></div>
+        <div class="bot-row"><span>预判翻滚 / predictive dodge</span><span>0.22 rad 锥角 · 0.10 s 反应</span></div>
+        <div class="bot-row"><span>距离控制 / range control</span><span>偏好 58–92 px · 20 px 内切近战</span></div>
+        <div class="bot-row"><span>掩体与寻路 / cover &amp; path</span><span>A* 每 0.32 s 刷新 · 卡角 0.7 s 脱离</span></div>
+        <div class="bot-row"><span>脱困 / unstick</span><span>连续 3 次 1.5 s 无进展自动改道</span></div>
+        <div class="bot-row"><span>追猎 / hunting</span><span>丢失视野后外推 3.5 s 再转扫另一侧</span></div>
+      </div>
+      <p class="notes" style="margin-top:20px">
+        <p><b>加一个 Bot 是改数据，不是改代码。</b>在 <b>src/ai/</b> 下丢一个脚本，往 <b>BotRegistry</b> 里加一条字典，设置里的下拉框会自己出现它 —— UI 一行都不用动。</p>
+      </p>
+    </div>
+    <div>
+      <div class="screen">
+        <img src="promo/hud.png" alt="CakeGame 对局 HUD：血条、弹药、小地图与击杀提示">
+        <span class="screen-cap">HUD / real frame</span>
+      </div>
+      <p class="mono-label" style="margin-top:14px">深色与浅色两套主题都做过对比度校验，命中率不低于 0.5</p>
+    </div>
+  </div>
+</section>
+
+<section id="net">
+  <div class="wrap">
+    <div class="sec-head"><h2>联机 / <em>Multiplayer</em></h2><span class="sec-en">listen server · no dedicated box</span></div>
+    <p class="sec-zh">谁开房间谁就是主机和权威。<b>Bot 只在主机上模拟</b> —— 所以 3 打 2 的对局不用把每个 Bot 的大脑都推给每个客户端。</p>
+    <div class="steps">
+      <div class="step">
+        <i>01</i>
+        <h4>LAN · 局域网</h4>
+        <p>在 <b>server_port − 1</b> 上广播发现主机，再直连 ENet。大厅里点 SCAN LAN，主机会回一句房间码。</p>
+      </div>
+      <div class="step">
+        <i>02</i>
+        <h4>P2P · 跨网房间码</h4>
+        <p>信令交换公网端点，双方绑同一个 UDP 端口互相拨号，让 ENet 自己的发包去开洞。<span class="tag-fallback">FAILSAFE</span></p>
+      </div>
+      <div class="step">
+        <i>03</i>
+        <h4>RELAY · WebSocket 兜底</h4>
+        <p>打洞不通时使用：对称型 NAT、运营商级 NAT、公司代理。房间表会镜像进 KV，断线重连仍找得到人。</p>
+      </div>
+    </div>
+    <table style="margin-top:34px">
+      <tr class="row"><th>项 / Item</th><th>说明 / Detail</th></tr>
+      <tr class="row"><td>房间码 / room code</td><td>小写字母数字，8 位以内，跨网加入时输入的那串字</td></tr>
+      <tr class="row"><td>人数 / roster</td><td>2–8 人可配，默认 3 真人 + 2 Bot</td></tr>
+      <tr class="row"><td>权威 / authority</td><td>仅 Host 跑 AI；客户端的改名与队伍由主机裁定</td></tr>
+      <tr class="row"><td>降级 / fallback</td><td>信令不可达自动转中继；两端地址都可在设置里改</td></tr>
+      <tr class="row"><td>自建 / self-host</td><td>server/api.php 信令 + server/relay.node.js 中继，两个文件即可部署</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <div class="sec-head"><h2>截图 / <em>Screens</em></h2><span class="sec-en">640×360 design space · 1280×720 window</span></div>
+    <p class="sec-zh">以下全部是实际渲染出来的帧，不是概念图。每个面板都在 640×360 设计空间里做过出屏与重叠校验。</p>
+    <div class="gal">
+      <figure><img src="promo/menu.png" alt="主菜单"><figcaption>主菜单 / menu</figcaption></figure>
+      <figure><img src="promo/settings.png" alt="设置面板"><figcaption>设置 / settings</figcaption></figure>
+      <figure><img src="promo/pause.png" alt="暂停菜单"><figcaption>暂停 / pause</figcaption></figure>
+      <figure><img src="promo/hero.png" alt="对局"><figcaption>对局 / match</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap dl">
+    <div>
+      <div class="sec-head"><h2>下载 / <em>Download</em></h2></div>
+      <p class="sec-zh">一个 exe，双击就能玩。资源全部内嵌在二进制里，旁边不需要再放任何文件。</p>
+      <div class="dl-box">
+        <span class="mono-label">Windows · x86-64</span>
+        <div class="big">CakeGame.exe</div>
+        <span class="mono-label">单文件 · 内嵌 pck · 已注入图标与版本信息</span>
+        <ul class="dl-list">
+          <li><b>大小</b> — 约 97 MB</li>
+          <li><b>运行</b> — Windows 10/11 x64，无需安装</li>
+          <li><b>显卡</b> — GL Compatibility（核显可跑）</li>
+          <li><b>设置</b> — 持久化到 user://settings.cfg</li>
+          <li><b>许可证</b> — Available License</li>
+        </ul>
+        <div class="cta"><a class="btn" href="#download">下载 / Download</a><a class="btn ghost" href="README-zh.md">说明 / Docs</a></div>
+      </div>
+    </div>
+    <div>
+      <div class="notes">
+        <p><b>没有单人难度选项。</b>Bot 只有一档，且不可调 —— 这不是没做完，是设计如此。</p>
+        <p><b>没有专用服务器。</b>房间随着主机下线而消失（Listen Server）。想要常驻的房间，得自建 <b>server/api.php</b> 并让主机一直在。</p>
+        <p><b>打洞不一定成功。</b>对称型 NAT 会直接落到 WebSocket 中继，延迟更高但一定连得上 —— 走哪条不需要你判断，客户端自己决定。</p>
+        <p><b>美术和音效是构建期生成的。</b>精灵、瓦片、音效都来自代码里的程序化图集，所以整个游戏是一个文件，而不是一堆贴图目录。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>© 2026 kscm · <b style="color:var(--text)">CakeGame</b> v1.0.0.0 · Available License</div>
+    <div class="links">
+      <a href="README.md">README / EN</a>
+      <a href="README-zh.md">中文说明</a>
+      <a href="LICENSE">LICENSE</a>
+      <a href="Planning/Planning.md">Planning</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

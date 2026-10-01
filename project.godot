@@ -1,0 +1,77 @@
+; CakeGame — Godot 4.5.1 project configuration
+; NOTE: the InputMap is built at runtime by src/core/input_setup.gd (autoload),
+; so there is intentionally no [input] section here.
+
+config_version=5
+
+[application]
+
+config/name="CakeGame"
+config/description="2D top-down pixel action battle. 1-3 human players vs 1-2 high-skill AI bots, with LAN / P2P netplay."
+config/version="1.0.0.0"
+run/main_scene="res://scenes/main_menu.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+config/icon="res://assets/icon.ico"
+config/quit_on_go_back=false
+
+[autoload]
+
+EventBus="*res://src/core/event_bus.gd"
+GameConfig="*res://src/core/game_config.gd"
+InputSetup="*res://src/core/input_setup.gd"
+AudioDirector="*res://src/core/audio_director.gd"
+SceneRouter="*res://src/core/scene_router.gd"
+NetManager="*res://src/net/net_manager.gd"
+
+[debug]
+
+gdscript/warnings/untyped_declaration=0
+gdscript/warnings/unsafe_property_access=0
+gdscript/warnings/unsafe_method_access=0
+gdscript/warnings/unsafe_cast=0
+gdscript/warnings/return_value_discarded=0
+
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=360
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=1
+
+[file_customization]
+
+folder_colors={
+"res://assets/": "purple",
+"res://src/": "blue",
+"res://tools/": "orange"
+}
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_mouse_from_touch=true
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="actor"
+2d_physics/layer_3="projectile"
+2d_physics/layer_4="trigger"
+
+[physics]
+
+common/physics_ticks_per_second=60
+2d/default_gravity=0.0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+2d/snap/vertices=1
+2d/snap/transforms=1
+environment/defaults/default_clear_color=Color(0.09, 0.09, 0.11, 1)
+anti_aliasing/quality/msaa_2d=0

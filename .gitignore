@@ -1,0 +1,28 @@
+# Godot
+.godot/
+*.translation
+
+# Build output
+build/
+*.exe
+*.pck
+*.zip
+
+# Verification scratch
+_check/
+_shot/
+
+# Local signalling storage (dev only; the deployed path uses the platform KV)
+server/rooms.json
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# WorkBuddy local notes (not project source)
+.workbuddy/
