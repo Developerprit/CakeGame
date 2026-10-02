@@ -122,6 +122,86 @@ The bot list is data, not code. Adding `CakeGame AI Bot v2` means dropping a scr
 
 ---
 
+## Plugins (BTPS)
+
+CakeGame can load **BTPS** plugins — `.btp` packages, which are ZIP files containing a `btps.json` manifest. The reference implementation is BrickTile's, vendored into `assets/btps_runtime/`; the full design argument is in `Planning/BTPS-Host.md`.
+
+**Off by default.** Settings → **Plugins** → *Enable plugins*. Nothing about the game changes until you turn it on, and no Python on your machine is not an error — see *When it does not work* below.
+
+What a plugin can do:
+
+| Hook | What it is for |
+|---|---|
+| `cakegame.bot.brain` | **Supply a whole bot brain.** It appears in the Bot version dropdown next to the two built-ins. |
+| `cakegame.map.generate` | Supply or modify arena generation. Offline only — see *Multiplayer* below. |
+| `cakegame.content.register` | Register skins and sound effects. |
+| `cakegame.tick` | A heartbeat, every 0.5 s. **Not** every frame. |
+| `cakegame.startup` / `.shutdown` | Load and unload. |
+
+### How a plugin is allowed to act
+
+A bot brain is handed a JSON observation and returns a JSON intent. The host clamps every number, so a plugin can only choose a direction and press a button — it cannot make its bot move faster than the game allows or see anything a human player could not.
+
+```python
+def bot_decide(obs):
+    me, foe = obs["self"], obs["target"]
+    return {
+        "move":  [1.0, 0.0],          # world-space direction
+        "aim":   [foe["pos"][0], foe["pos"][1]],
+        "gun":   foe["visible"] and foe["dist"] < 300.0,
+        "melee": False, "hook": False, "roll": False,
+    }
+```
+
+Decisions are **not awaited**. A reply crosses a process boundary and can be delayed by the plugin, the interpreter or the OS, and the game loop is synchronous — blocking it on a plugin would cost a frame. So every think sends a fresh observation, keeps acting on the last reply that arrived (one or two frames stale, next to the 0.12 s reaction delay the built-in bots already have), and if nothing has come back for 0.5 s a real `BotV1` takes over silently. A slow or crashed plugin produces a bot that plays like v1, not a bot that stands still.
+
+The example plugin's source is in `plugins-src/cakegame-example-bot/`, and `assets/btps_samples/example-bot-1.0.0.btp` is the built `.btp`.
+
+### Measured, not asserted
+
+`tests/btps_smoke.tscn` installs a real `.btp`, lets a real Python brain drive a real bot, then uninstalls it:
+
+```
+godot --headless --path . res://tests/btps_smoke.tscn
+
+passed: 15   failed: 0
+  bot ids: cakegame_v1, cakegame_v1_pro, btps:com.kscm.cakegame.example-bot
+  plugin bot travelled 156 px, wanted fire on 148 frames
+  diagnostics: replies 473, visible 324, ammo 1, gun_out 477
+```
+
+Do **not** pass `--fixed-fps` to this one. It makes the engine spin the main loop hard enough to starve the Python child process: the bridge starts, stays alive, and never gets far enough to publish its port. The other suites do use it, and a real build runs at vsync and is unaffected.
+
+`tests/btps_degrade.tscn` covers the promise that actually matters to a player — *a broken plugin system must never break the game* — by provoking each failure on purpose:
+
+```
+godot --headless --path . res://tests/btps_degrade.tscn
+
+passed: 18   failed: 0
+  a dead configured path is dropped and auto-detection recovers the host
+  the bot stayed alive for every frame after the bridge died
+  the host came back by itself after one restart
+  a second death is reported as a real error, not retried forever
+```
+
+### When it does not work
+
+| State | What you see | What still works |
+|---|---|---|
+| Off | greyed out | everything |
+| No Python found | a note, plus a field to type the path | everything — the game does not care |
+| Bridge died | an error with the bridge's last words | everything; the host restarts itself **once** |
+
+That last row is the interesting one. The runtime is a child process, so a plugin that segfaults the interpreter takes nothing down with it. The host restarts the bridge once, and a second death is reported as a real error rather than retried — with one deliberate exception to the retry rule: a bridge that stays up for 30 s is considered healthy and earns its retry back, because a plugin that kills the interpreter *while it loads* would otherwise put the host in an unbounded respawn loop.
+
+**Plugins run as your own user account.** BTPS sandboxes are boundary constraints — permission gates, path guards, timeouts — not a malware container. Only install plugins you trust. Uninstalling asks first, because there is no undo inside the game.
+
+### Multiplayer
+
+Plugins are local to the machine and are never sent to other players. `cakegame.map.generate` is therefore **offline-only**: terrain generated on the host has to match what the client builds from the same seed, so in a multiplayer match the host skips that hook and says so.
+
+---
+
 ## Match flow
 
 Three-scene router with a fade transition: **Main Menu → Lobby → Game**.
@@ -202,11 +282,14 @@ src/
   core/         enums, balance, event bus, config, runtime InputMap, scene router, audio
   actors/       actor body + state machine, player, bot, combat, bullets, hook, FX
   states/       shared actor states
-  ai/           bot brain base, registry, cakegame_v1, cakegame_v1_pro
+  ai/           bot brain base, registry, cakegame_v1, cakegame_v1_pro, btps bridge brain
+  btps/         plugin host autoload + the Python bridge transport
   world/        arena, tile set builder, seeded map generator, camera rig
   ui/           pixel theme, main menu, settings, lobby, HUD, pause menu, game root
+assets/btps_runtime/   vendored BTPS reference implementation + bridge.py
+plugins-src/    plugin sources; the built .btp goes in assets/btps_samples/
 server/         deployable signalling (api.php) and relay (relay.node.js)
-tests/          headless suites: selfcheck, match_sim, ui_smoke
+tests/          headless suites: selfcheck, match_sim, ui_smoke, bot_duel, btps_smoke, btps_degrade
 promo/          screenshots used by index.html
 ```
 
@@ -216,15 +299,25 @@ promo/          screenshots used by index.html
 
 ## Verification
 
-Three headless suites run in the Godot engine itself — no external test runner:
+Five headless suites run in the Godot engine itself — no external test runner:
 
 ```bash
-godot --headless --path . res://tests/selfcheck.tscn     #  107 assertions
-godot --headless --path . res://tests/match_sim.tscn     #  92 assertions
-godot --headless --path . res://tests/ui_smoke.tscn      #  93 assertions
+godot --headless --path . res://tests/selfcheck.tscn     #  115 assertions
+godot --headless --path . res://tests/match_sim.tscn     #   92 assertions
+godot --headless --path . res://tests/ui_smoke.tscn      #  106 assertions
+godot --headless --path . res://tests/btps_smoke.tscn    #   15 assertions  (no --fixed-fps)
+godot --headless --path . res://tests/btps_degrade.tscn  #   18 assertions  (no --fixed-fps)
+```
+
+And one deterministic benchmark, which needs the flag because it measures the physics:
+
+```bash
+godot --headless --path . --fixed-fps 60 res://tests/bot_duel.tscn
 ```
 
 Note the invocation: the suites are **scenes**, not scripts, because `--script` does not bring the autoload singletons up and every one of them fails to compile.
+
+The two plugin suites are the exception to the `--fixed-fps` advice, and deliberately so: the flag spins the main loop fast enough to starve the Python child process, so the bridge would sit alive without ever publishing its port. A real build runs at vsync and is unaffected.
 
 The two servers have headless checks of their own: `api.php` answers a full ping → whereami → announce × 2 → peers → leave cycle under `php -S` (including the two rejections: a code under 4 characters, and an `addr` that is not `ip:port`), and `relay.node.js` is exercised by a two-socket test that asserts a binary frame reaches the other member byte-for-byte, that the sender gets no echo, and that a room on another code hears nothing.
 

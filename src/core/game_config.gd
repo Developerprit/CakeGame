@@ -49,6 +49,12 @@ var signaling_url: String = "https://cakegame.rth1.xyz/api.php"
 var relay_url: String = "wss://cakegame.rth1.xyz/relay.node.js"
 var preferred_transport: String = "auto"   ## auto | lan | p2p | relay
 
+## BTPS plugin host. `btps_python_path` empty means "auto-detect"; the host
+## degrades to OFF/NO_PYTHON when nothing usable is installed, it never blocks
+## the game from starting.
+var btps_enabled: bool = true
+var btps_python_path: String = ""
+
 ## Latched map seed. See `effective_seed()` - this is not persisted, because the
 ## point of it is that one session keeps one map. `_session_seed_text` records the
 ## seed-box contents the latch was derived from, which is what makes the latch
@@ -108,6 +114,8 @@ func load_settings() -> void:
 	signaling_url = cf.get_value(SECTION, "signaling_url", signaling_url)
 	relay_url = cf.get_value(SECTION, "relay_url", relay_url)
 	preferred_transport = cf.get_value(SECTION, "preferred_transport", preferred_transport)
+	btps_enabled = cf.get_value(SECTION, "btps_enabled", btps_enabled)
+	btps_python_path = cf.get_value(SECTION, "btps_python_path", btps_python_path)
 	_clamp_all()
 	# Anything that reloads settings may have changed the seed box, so the latch
 	# has to go with it.
@@ -150,6 +158,8 @@ func save_settings() -> void:
 	cf.set_value(SECTION, "signaling_url", signaling_url)
 	cf.set_value(SECTION, "relay_url", relay_url)
 	cf.set_value(SECTION, "preferred_transport", preferred_transport)
+	cf.set_value(SECTION, "btps_enabled", btps_enabled)
+	cf.set_value(SECTION, "btps_python_path", btps_python_path)
 	cf.save(CONFIG_PATH)
 	EventBus.settings_changed.emit()
 

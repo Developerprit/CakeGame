@@ -120,6 +120,86 @@ Bot 列表是**数据表而不是代码**。想加一个 `CakeGame AI Bot v2`，
 
 ---
 
+## 插件（BTPS）
+
+CakeGame 能加载 **BTPS** 插件 —— `.btp` 包本质是 ZIP，里面放一份 `btps.json` 清单。参考实现来自 BrickTile，已经内置进 `assets/btps_runtime/`；完整选型论证见 `Planning/BTPS-Host.md`。
+
+**默认关闭。** 设置 → **插件** → *启用插件*。在你打开之前，游戏的一切行为都不会变；本机没有 Python 也**不算错误** —— 详见下面的*它坏掉的时候*。
+
+插件能做这些事：
+
+| 钩子 | 用途 |
+|---|---|
+| `cakegame.bot.brain` | **接管一整个 Bot 大脑。** 它会出现在 Bot 版本下拉框里，和两个内置 Bot 并列。 |
+| `cakegame.map.generate` | 接管或修改场地生成。**仅单机** —— 理由见下面的*联机*。 |
+| `cakegame.content.register` | 注册皮肤与音效。 |
+| `cakegame.tick` | 心跳，**每 0.5 s 一次**，不是每帧。 |
+| `cakegame.startup` / `.shutdown` | 加载与卸载。 |
+
+### 插件被允许做什么
+
+Bot 大脑收到一份 JSON 观测、返回一份 JSON 意图。宿主会把所有数值**钳制**在合法范围内，所以插件只能选方向、按键 —— 它没法让自己的 Bot 跑得比规则快，也看不到人类玩家看不到的东西。
+
+```python
+def bot_decide(obs):
+    me, foe = obs["self"], obs["target"]
+    return {
+        "move":  [1.0, 0.0],          # 世界坐标方向
+        "aim":   [foe["pos"][0], foe["pos"][1]],
+        "gun":   foe["visible"] and foe["dist"] < 300.0,
+        "melee": False, "hook": False, "roll": False,
+    }
+```
+
+决策**不阻塞等待**。回复要跨进程，可能被插件、解释器或操作系统拖慢，而游戏主循环是同步的 —— 阻塞一帧就是掉帧。所以每次思考都会发出新的观测，同时沿用**上一份真正到达的回复**（滞后 1~2 帧，对比内置 Bot 本来就有的 0.12 s 反应延迟根本看不出来）；超过 0.5 s 没有任何回复，就静默换成一个真正的 `BotV1` 接手。于是插件慢或崩了，得到的是一个"打法像 v1"的 Bot，而不是一个"站着一动不动"的 Bot。
+
+示例插件源码在 `plugins-src/cakegame-example-bot/`，打好的包在 `assets/btps_samples/example-bot-1.0.0.btp`。
+
+### 靠测，不靠说
+
+`tests/btps_smoke.tscn` 会真装一个 `.btp`、让一个真 Python 大脑驱动一个真 Bot、再把它卸载：
+
+```
+godot --headless --path . res://tests/btps_smoke.tscn
+
+passed: 15   failed: 0
+  bot ids: cakegame_v1, cakegame_v1_pro, btps:com.kscm.cakegame.example-bot
+  plugin bot travelled 156 px, wanted fire on 148 frames
+  diagnostics: replies 473, visible 324, ammo 1, gun_out 477
+```
+
+这一套**不要加 `--fixed-fps`**。加了之后引擎会把主循环跑得飞快，反而把 Python 子进程饿死：桥起来了、活着，但一直没走到发布端口那一步。其它套件用这个参数没问题，真机跑是 vsync 也完全不受影响。
+
+`tests/btps_degrade.tscn` 验证的是对玩家真正重要的那条承诺 —— *坏掉的插件系统绝不能带崩游戏*，做法是把每种失败都主动制造一遍：
+
+```
+godot --headless --path . res://tests/btps_degrade.tscn
+
+passed: 18   failed: 0
+  配错的解释器路径被丢弃，自动探测把宿主救了回来
+  桥被杀之后，Bot 每一帧都活着
+  宿主自己重启成功了一次
+  第二次死亡被报成真实错误，而不是无限重试
+```
+
+### 它坏掉的时候
+
+| 状态 | 你看到什么 | 还能玩什么 |
+|---|---|---|
+| 关闭 | 灰掉 | 全部功能 |
+| 没找到 Python | 一行提示 + 一个手填路径的输入框 | 全部功能 —— 游戏根本不在乎 |
+| 桥挂了 | 显示桥的最后一句话 | 全部功能；宿主会**自动重启一次** |
+
+最后一行有意思。运行时跑在子进程里，所以一个把解释器玩崩的插件**带不垮游戏**。宿主会重启桥一次；如果第二次又挂，就当成真实错误报出来，而不是继续重试 —— 重试规则里有一个刻意的例外：桥**稳定存活满 30 s** 就算健康、归还一次重试额度，因为一个"一装载就杀死解释器"的插件，否则会让宿主陷入无上限的重启循环。
+
+**插件以你的用户权限运行。** BTPS 的沙箱是**边界约束**（权限闸门、路径护栏、超时），不是恶意代码容器。只装你信任的插件。卸载会二次确认，因为这个操作在游戏里**没法撤销**。
+
+### 联机
+
+插件只在本机生效，**不会**同步给其他玩家。因此 `cakegame.map.generate` **只在单机生效** —— 地形必须由 Host 生成得和客户端按同一种子算出来的一致，所以联机时 Host 会跳过这个钩子，并且明确告诉你跳过了。
+
+---
+
 ## 赛制
 
 三场景路由，带淡入淡出：**主菜单 → 大厅 → 对局**。
@@ -200,11 +280,14 @@ src/
   core/         枚举、数值表、事件总线、配置、运行时 InputMap、场景路由、音频
   actors/       角色本体与状态机、玩家、Bot、战斗、子弹、抓钩、特效
   states/       共享角色状态
-  ai/           BotBrain 基类、注册表、cakegame_v1、cakegame_v1_pro
+  ai/           BotBrain 基类、注册表、cakegame_v1、cakegame_v1_pro、BTPS 桥接大脑
+  btps/         插件宿主 autoload 与 Python 桥的传输层
   world/        场地、瓦片集构建、种子地图生成、摄像机机架
   ui/           像素主题、主菜单、设置、大厅、HUD、暂停菜单、对局根节点
+assets/btps_runtime/   内置的 BTPS 参考实现 + bridge.py
+plugins-src/    插件源码；打好的 .btp 放在 assets/btps_samples/
 server/         可部署的信令（api.php）与中继（relay.node.js）
-tests/          无头测试：selfcheck、match_sim、ui_smoke
+tests/          无头测试：selfcheck、match_sim、ui_smoke、bot_duel、btps_smoke、btps_degrade
 promo/          index.html 用到的截图
 ```
 
@@ -214,15 +297,25 @@ promo/          index.html 用到的截图
 
 ## 验证
 
-三套无头测试直接在 Godot 引擎里跑，不需要外部测试框架：
+五套无头测试直接在 Godot 引擎里跑，不需要外部测试框架：
 
 ```bash
-godot --headless --path . res://tests/selfcheck.tscn     # 107 条断言
+godot --headless --path . res://tests/selfcheck.tscn     # 115 条断言
 godot --headless --path . res://tests/match_sim.tscn     #  92 条断言
-godot --headless --path . res://tests/ui_smoke.tscn      #  93 条断言
+godot --headless --path . res://tests/ui_smoke.tscn      # 106 条断言
+godot --headless --path . res://tests/btps_smoke.tscn    #  15 条断言（不要加 --fixed-fps）
+godot --headless --path . res://tests/btps_degrade.tscn  #  18 条断言（不要加 --fixed-fps）
+```
+
+外加一个确定性基准，它需要那个参数，因为它要量的是物理：
+
+```bash
+godot --headless --path . --fixed-fps 60 res://tests/bot_duel.tscn
 ```
 
 注意调用方式：测试套件是**场景**而不是脚本，因为 `--script` 不会把自动加载单例拉起来，三个套件会全部编译失败。
+
+两个插件套件是`--fixed-fps` 这条建议的**例外，而且是故意的**：加了它之后主循环跑得飞快，会把 Python 子进程饿死，桥会一直活着却永远发布不出端口。真机跑是 vsync，完全不受影响。
 
 两个后端也各有自己的无头检查：`api.php` 在 `php -S` 下跑完一整轮 ping → whereami → announce × 2 → peers → leave（包括两条必须被拒绝的输入：不足 4 位的房间码、以及不是 `ip:port` 格式的 addr）；`relay.node.js` 由一个双连接测试覆盖 —— 断言二进制帧逐字节送达对端、发送方收不到自己的回环、以及另一个房间完全听不到动静。
 

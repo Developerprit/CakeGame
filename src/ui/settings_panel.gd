@@ -26,6 +26,10 @@ var _body: VBoxContainer = null
 var _syncing: bool = false
 var _capture_action: StringName = &""
 var _capture_button: Button = null
+## Container for the BTPS section only. Held separately because it rebuilds on
+## its own schedule (the plugin list arrives asynchronously from a child process)
+## instead of only when the whole panel does.
+var _plugin_box: VBoxContainer = null
 
 # keep handles so `_sync_from_config()` can re-read the config into them
 var _widgets: Dictionary = {}       ## key -> Control
@@ -57,6 +61,15 @@ func _bind() -> void:
 
 func _unbind() -> void:
 	I18n.unbind_bus(self)
+	# The host is an autoload that outlives this panel, so a listener left behind
+	# here would be called after the panel is freed - and it would try to render
+	# into a container that no longer exists.
+	if BtpsHost != null:
+		if BtpsHost.plugins_changed.is_connected(_rebuild_plugin_section):
+			BtpsHost.plugins_changed.disconnect(_rebuild_plugin_section)
+		if BtpsHost.status_changed.is_connected(_rebuild_plugin_section):
+			BtpsHost.status_changed.disconnect(_rebuild_plugin_section)
+	_plugin_box = null
 
 
 func _post_build() -> void:
@@ -151,6 +164,7 @@ func _build() -> void:
 	_build_controls()
 	_build_presentation()
 	_build_network()
+	_build_plugins()
 
 	# Placement last, with an explicit size. 470x316 centred in 640x360 leaves
 	# 85 px either side and 22 px top and bottom, which is the whole margin budget
@@ -458,6 +472,236 @@ func _build_network() -> void:
 		_apply_theme()
 		_sync_from_config())
 	_body.add_child(reset)
+
+
+# ===========================================================================
+# BTPS plugin host
+# ===========================================================================
+#
+# This section is different from every other one above, and the difference is the
+# whole reason it needs its own rebuild path.
+#
+# `_build()` runs synchronously from `_ready()`, but the plugin list does not
+# exist yet: the host is a Python child process that needs a second to boot, so
+# at first paint the honest answer is "loading". Mutating labels in place when
+# the reply lands would need a handle on every row, and the language switch
+# already tears this whole panel down and rebuilds it - which would silently
+# drop those handles and leave a panel showing a dead host forever.
+#
+# So the section owns a container and rebuilds *itself* from scratch on
+# `BtpsHost.plugins_changed`. Same discipline as `I18n.rebuild_panel`, scoped to
+# one section, and the listener is connected here and dropped in `_unbind()` so a
+# closed panel is not called back into.
+
+## Host status -> player-facing text. One place, so the wording cannot drift
+## between the label and the detail line.
+static func _host_status_text(status: int) -> String:
+	match status:
+		1:
+			return I18n.t("no Python interpreter found")
+		2:
+			return I18n.t("starting...")
+		3:
+			return I18n.t("host ready")
+		4:
+			return I18n.t("plugin host error")
+		_:
+			return I18n.t("not started")
+
+
+func _build_plugins() -> void:
+	_section(I18n.t("Plugins"))
+	_plugin_box = VBoxContainer.new()
+	_plugin_box.add_theme_constant_override("separation", 3)
+	_body.add_child(_plugin_box)
+	# `BtpsHost` is an autoload, so it always exists; but a plugin panel that
+	# throws on a null singleton takes the whole settings screen with it, and the
+	# settings screen has to keep working with plugins switched off.
+	if BtpsHost != null:
+		if not BtpsHost.plugins_changed.is_connected(_rebuild_plugin_section):
+			BtpsHost.plugins_changed.connect(_rebuild_plugin_section)
+		if not BtpsHost.status_changed.is_connected(_rebuild_plugin_section):
+			BtpsHost.status_changed.connect(_rebuild_plugin_section)
+	_render_plugin_section()
+
+
+func _rebuild_plugin_section(_ignored: Variant = null) -> void:
+	# A signal can land after the panel is being torn down (the language switch
+	# frees this node, and the host keeps running). Touching a freed container is
+	# an error, so the box has to still be valid before anything else happens.
+	if _plugin_box == null or not is_instance_valid(_plugin_box):
+		return
+	if not is_inside_tree():
+		return
+	for child in _plugin_box.get_children():
+		child.queue_free()
+	_render_plugin_section()
+
+
+func _render_plugin_section() -> void:
+	if BtpsHost == null:
+		return
+	# --- master switch -------------------------------------------------------
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	_plugin_box.add_child(row)
+	var l := PixelTheme.body(I18n.t("Enable plugins"))
+	l.custom_minimum_size = Vector2(ROW_LABEL_W, 0)
+	row.add_child(l)
+	var toggle := CheckButton.new()
+	toggle.button_pressed = bool(GameConfig.get("btps_enabled"))
+	toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	toggle.toggled.connect(_on_plugins_toggled)
+	row.add_child(toggle)
+
+	# --- status --------------------------------------------------------------
+	var note := PixelTheme.body("%s: %s" % [
+		I18n.t("Plugin host"), _host_status_text(BtpsHost.status)], true)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(PANEL_W - 46, 0)
+	_plugin_box.add_child(note)
+
+	# `NO_PYTHON` is the one state that needs an action rather than an
+	# explanation: the player may well have Python, just not where we looked.
+	if BtpsHost.status == 1:
+		var ppath := HBoxContainer.new()
+		ppath.add_theme_constant_override("separation", 8)
+		_plugin_box.add_child(ppath)
+		var pl := PixelTheme.body(I18n.t("Python path"))
+		pl.custom_minimum_size = Vector2(ROW_LABEL_W, 0)
+		ppath.add_child(pl)
+		var pe := LineEdit.new()
+		pe.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pe.placeholder_text = "python.exe"
+		pe.text = BtpsHost.python_path
+		pe.focus_exited.connect(func():
+			_on_python_path(pe.text))
+		pe.text_submitted.connect(func(_t: String): _on_python_path(pe.text))
+		ppath.add_child(pe)
+
+	# --- the list ------------------------------------------------------------
+	if BtpsHost.status == 2 or BtpsHost.status == 0:
+		_plugin_box.add_child(PixelTheme.body(I18n.t("Waiting for the plugin host..."), true))
+		return
+	if BtpsHost.plugins.is_empty():
+		_plugin_box.add_child(PixelTheme.body(I18n.t("No plugins installed."), true))
+		_plugin_box.add_child(PixelTheme.body(
+			I18n.t("Drop a .btp file into the plugins folder to install one."), true))
+		return
+
+	for record in BtpsHost.plugins:
+		_render_plugin_row(record)
+
+	_plugin_box.add_child(PixelTheme.body(
+		I18n.t("Plugins run as your own user account. Only install plugins you trust."), true))
+	_plugin_box.add_child(PixelTheme.body(
+		I18n.t("Plugins stay on this machine and are not sent to other players."), true))
+
+
+func _render_plugin_row(record: Dictionary) -> void:
+	var pid := str(record.get("id", ""))
+	if pid.is_empty():
+		return
+	var manifest: Dictionary = record.get("manifest", {})
+	var enabled := str(record.get("state", "")) == "enabled"
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	_plugin_box.add_child(box)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	box.add_child(head)
+	var name_label := PixelTheme.body("%s  %s" % [
+		str(manifest.get("name", pid)), str(record.get("version", ""))])
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(name_label)
+
+	var toggle := Button.new()
+	toggle.text = I18n.t("DISABLE") if enabled else I18n.t("ENABLE")
+	toggle.custom_minimum_size = Vector2(72, 0)
+	toggle.pressed.connect(func(): _on_plugin_toggled(pid, enabled))
+	head.add_child(toggle)
+
+	# Uninstall is irreversible from inside the game - there is no trash can
+	# behind it - so it gets a confirmation, and the confirmation says so rather
+	# than just asking "are you sure?".
+	var rm := Button.new()
+	rm.text = I18n.t("UNINSTALL")
+	rm.custom_minimum_size = Vector2(88, 0)
+	rm.pressed.connect(func(): _on_uninstall_pressed(pid))
+	head.add_child(rm)
+
+	var desc := str(manifest.get("description", ""))
+	if desc.is_empty():
+		desc = str(record.get("permissions_summary", ""))
+	if not desc.is_empty():
+		var d := PixelTheme.body(desc, true)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(PANEL_W - 46, 0)
+		box.add_child(d)
+	# Say what the plugin adds, not just that it exists: a bot brain shows up in
+	# the Bot version dropdown, and a player who cannot tell why their list grew
+	# has no way to connect the two.
+	if BtpsHost.brains.has(pid):
+		var brain: Dictionary = BtpsHost.brains[pid]
+		var b := PixelTheme.body("%s: %s" % [
+			I18n.t("Bot brain"), _brain_name(brain)], true)
+		box.add_child(b)
+
+
+## A plugin-supplied brain carries both languages because the manifest does not
+## know which one is active, and the host reindexes records rather than
+## translating at read time.
+static func _brain_name(brain: Dictionary) -> String:
+	if GameConfig.language == "zh":
+		return str(brain.get("desc_zh", brain.get("name", "")))
+	return str(brain.get("name", ""))
+
+
+func _on_plugins_toggled(on: bool) -> void:
+	GameConfig.set("btps_enabled", on)
+	_commit()
+	if on:
+		BtpsHost.request_boot()
+	else:
+		BtpsHost.shutdown()
+
+
+func _on_python_path(text: String) -> void:
+	var t := text.strip_edges()
+	if t.is_empty():
+		return
+	GameConfig.set("btps_python_path", t)
+	_commit()
+	# The host caches its resolved interpreter, so a path change only takes
+	# effect after a restart of the host itself.
+	BtpsHost.shutdown()
+	BtpsHost.request_boot()
+
+
+func _on_plugin_toggled(plugin_id: String, enabled: bool) -> void:
+	BtpsHost.set_enabled_state(plugin_id, not enabled)
+
+
+func _on_uninstall_pressed(plugin_id: String) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = I18n.t("UNINSTALL")
+	dialog.dialog_text = "%s\n\n%s" % [
+		I18n.t("UNINSTALL %s?" % plugin_id),
+		I18n.t("Cannot be undone from inside the game."),
+	]
+	dialog.ok_button_text = I18n.t("UNINSTALL")
+	dialog.cancel_button_text = I18n.t("CLOSE  [ESC]")
+	dialog.confirmed.connect(func():
+		BtpsHost.uninstall(plugin_id)
+		dialog.queue_free())
+	dialog.canceled.connect(func(): dialog.queue_free())
+	dialog.closed.connect(func(): dialog.queue_free())
+	# The panel frees itself on a language switch; a dialog parented to a freed
+	# node would go with it, so it hangs off the tree root for its own lifetime.
+	get_tree().root.add_child.call_deferred(dialog)
+	dialog.popup_centered()
 
 
 # ===========================================================================

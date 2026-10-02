@@ -14,6 +14,39 @@ extends RefCounted
 
 const DEFAULT_ID: String = "cakegame_v1"
 
+## Brains provided by BTPS plugins are prefixed so one id space covers both
+## shipped and plugin code without collisions.
+const BTPS_PREFIX: String = "btps:"
+const BTPS_SCRIPT: String = "res://src/ai/btps_bot_brain.gd"
+
+## Populated by BtpsHost when plugins come and go. Not part of ENTRIES because
+## it is runtime data, not shipped content.
+static var plugin_entries: Array[Dictionary] = []
+
+
+static func all_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append_array(ENTRIES)
+	out.append_array(plugin_entries)
+	return out
+
+
+## Replace the plugin-provided entries with `brains`
+## ({plugin_id -> {"name", "desc_en", "desc_zh"}}).
+static func sync_plugin_brains(brains: Dictionary) -> void:
+	plugin_entries.clear()
+	for pid in brains:
+		var info: Dictionary = brains[pid]
+		plugin_entries.append({
+			"id": BTPS_PREFIX + str(pid),
+			"name": str(info.get("name", pid)),
+			"script": BTPS_SCRIPT,
+			"tag": "PLUGIN",
+			"plugin": str(pid),
+			"desc_en": str(info.get("desc_en", "")),
+			"desc_zh": str(info.get("desc_zh", "")),
+		})
+
 const ENTRIES: Array[Dictionary] = [
 	{
 		"id": "cakegame_v1",
@@ -47,36 +80,39 @@ const ENTRIES: Array[Dictionary] = [
 
 static func ids() -> PackedStringArray:
 	var out := PackedStringArray()
-	for e in ENTRIES:
+	for e in all_entries():
 		out.append(str(e["id"]))
 	return out
 
 
 static func display_names() -> PackedStringArray:
 	var out := PackedStringArray()
-	for e in ENTRIES:
+	for e in all_entries():
 		out.append(str(e["name"]))
 	return out
 
 
 static func index_of(id: String) -> int:
-	for i in ENTRIES.size():
-		if str(ENTRIES[i]["id"]) == id:
+	var all := all_entries()
+	for i in all.size():
+		if str(all[i]["id"]) == id:
 			return i
 	return -1
 
 
 static func entry(id: String) -> Dictionary:
+	var all := all_entries()
 	var i := index_of(id)
-	if i < 0:
-		return ENTRIES[0]
-	return ENTRIES[i]
+	if i < 0 or i >= all.size():
+		return all[0]
+	return all[i]
 
 
 static func id_at(index: int) -> String:
-	if index < 0 or index >= ENTRIES.size():
+	var all := all_entries()
+	if index < 0 or index >= all.size():
 		return DEFAULT_ID
-	return str(ENTRIES[index]["id"])
+	return str(all[index]["id"])
 
 
 static func display_name(id: String) -> String:
@@ -93,6 +129,17 @@ static func description(id: String, zh: bool = false) -> String:
 ## taking the whole match down.
 static func create(id: String) -> BotBrain:
 	var e := entry(id)
+	# A plugin brain has no GDScript of its own: the decisions come from Python
+	# over the bridge, and BtpsBotBrain is the adapter that speaks for it.
+	if id.begins_with(BTPS_PREFIX):
+		var script := load(BTPS_SCRIPT) as GDScript
+		if script == null:
+			push_error("[BotRegistry] missing plugin brain adapter")
+			return null
+		var made: Variant = script.new()
+		if made != null and "plugin_id" in made:
+			made.set("plugin_id", id.substr(BTPS_PREFIX.length()))
+		return made as BotBrain
 	var path := str(e.get("script", ""))
 	if path.is_empty() or not ResourceLoader.exists(path):
 		push_error("[BotRegistry] missing brain script: %s" % path)

@@ -231,10 +231,64 @@ func _check_settings_panel() -> void:
 		GameConfig.bot_slots = 2
 		GameConfig.save_settings()
 
+	_check_plugin_section(settings)
+
 	settings.close()
 	ok(not settings.is_open(), "close() hides the panel")
 	info("settings panel: %d widgets, all sections wired" % widgets.size())
 	await _drop(node)
+
+
+## The plugin section has to render in every host state, including the broken
+## ones. The plugin host is off by default and depends on a Python that may not
+## exist, so "degrades to a readable panel" is the normal path, not an edge case
+## - and it is the path a fresh install always takes.
+func _check_plugin_section(settings: SettingsPanel) -> void:
+	var box := settings.get("_plugin_box") as VBoxContainer
+	ok(box != null, "the settings panel built a plugin section")
+	if box == null:
+		return
+	ok(box.get_child_count() > 0, "the plugin section rendered rows while OFF")
+
+	# The section is a VBox of Controls, so the text has to be gathered by walking
+	# it - there is no single label to read and asserting on the container alone
+	# would pass on an empty box.
+	var text := _collect_text(box)
+	info("plugin section: %d rows, %d chars of text" % [box.get_child_count(), text.length()])
+	ok(text.contains("Plugins") or text.contains("插件"),
+		"the plugin section is labelled in the active language")
+
+	# Toggling the master switch must persist, like every other row in this
+	# panel. It is the one control a player without Python will still press.
+	var toggle := _find_check(box) as CheckButton
+	ok(toggle != null, "the plugin section has an enable switch")
+	if toggle != null:
+		var was := GameConfig.btps_enabled
+		toggle.button_pressed = not was
+		settings.call("_commit")
+		ok(GameConfig.btps_enabled == (not was),
+			"the plugin switch writes through to GameConfig")
+		toggle.button_pressed = was
+		settings.call("_commit")
+
+
+func _collect_text(node: Node) -> String:
+	var out := ""
+	if node is Label or node is Button or node is CheckButton or node is LineEdit:
+		out += str((node as Control).get("text")) + " "
+	for child in node.get_children():
+		out += _collect_text(child)
+	return out
+
+
+func _find_check(node: Node) -> Node:
+	for child in node.get_children():
+		if child is CheckButton:
+			return child
+		var found := _find_check(child)
+		if found != null:
+			return found
+	return null
 
 
 func _check_language() -> void:

@@ -46,6 +46,7 @@ func _ready() -> void:
 	run("decoration", _check_decoration)
 	run("navigation", _check_navigation)
 	run("camera node", _check_camera_node)
+	run("exportable resources", _check_exportable_resources)
 	get_tree().quit(report("SELF-CHECK"))
 
 
@@ -544,6 +545,45 @@ func _check_navigation() -> void:
 	a2.queue_free()
 	arena.queue_free()
 	await get_tree().process_frame
+
+
+## Files the game needs at runtime that the exporter does not recognise.
+##
+## `export_filter="all_resources"` ships what the engine considers a resource,
+## and it does not consider `.py` or `.btp` to be one. So the whole vendored BTPS
+## runtime plus `bridge.py` were left out of the exe: the plugin host would boot,
+## fail to find `bridge.py`, and sit in ERROR forever - while every test stayed
+## green, because the tests run from the project directory where those files do
+## exist on disk. A shipped build with a dead feature and a green suite is the
+## worst combination there is, so the fix is pinned here instead of in a
+## checklist nobody reads.
+##
+## `include_filter` is what makes it work. This asserts the two halves stay in
+## step: the preset keeps the patterns, and the files still exist.
+func _check_exportable_resources() -> void:
+	var preset := FileAccess.get_file_as_string("res://export_presets.cfg")
+	ok(preset.contains("*.py"),
+		"export_presets.cfg keeps .py files (the BTPS runtime is not a Godot resource)")
+	ok(preset.contains("*.btp"), "export_presets.cfg keeps .btp plugin packages")
+	# `all_resources` alone would drop them again the moment someone "tidied up"
+	# the include list, and the failure is invisible until a player opens the
+	# plugin panel.
+	ok(preset.contains("export_filter=\"all_resources\""),
+		"the export filter is still all_resources (this check assumes that)")
+	# The files themselves: a rename that missed the preset would ship a host
+	# pointing at a path that no longer exists.
+	ok(FileAccess.file_exists("res://assets/btps_runtime/bridge.py"),
+		"the Python bridge is where the host expects it")
+	ok(FileAccess.file_exists("res://assets/btps_runtime/VERSION"),
+		"the runtime version stamp is present (it gates re-extraction)")
+	ok(FileAccess.file_exists("res://assets/btps_runtime/btps/__init__.py"),
+		"the vendored BTPS package is importable from the released runtime")
+	ok(FileAccess.file_exists("res://assets/btps_samples/example-bot-1.0.0.btp"),
+		"the sample plugin package ships with the game")
+	# The one thing a path typo would break quietly.
+	var host_script := FileAccess.get_file_as_string("res://src/btps/btps_host.gd")
+	ok(host_script.contains("res://assets/btps_runtime"),
+		"the host releases the runtime from the path that is actually shipped")
 
 
 ## A position 1 px outside a wall face: the cell containing it is open, but a

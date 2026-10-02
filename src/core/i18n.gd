@@ -198,6 +198,33 @@ Bot 数量下限是 1，保证每局都有对手。",
 	"RELOADING": "换弹中",
 	"ROUND OVER": "本回合结束",
 	"VICTORY": "胜利",
+
+	# ---- BTPS plugin host ---------------------------------------------------
+	# The trust line is deliberately blunt rather than reassuring: a btps sandbox
+	# is a boundary constraint, not a malware container, so the player is told
+	# what is actually true instead of what would sell the feature.
+	"Plugins run as your own user account. Only install plugins you trust.": "插件以你的用户权限运行，只装你信任的插件。",
+	"Plugins": "插件",
+	"Plugin host": "插件宿主",
+	"Enable plugins": "启用插件",
+	"Loading the plugin host...": "正在加载插件宿主……",
+	"not started": "未启动",
+	"starting...": "启动中……",
+	"host ready": "就绪",
+	"no Python interpreter found": "未找到 Python 解释器",
+	"plugin host error": "插件宿主出错",
+	"Python path": "Python 路径",
+	"Restart the plugin host": "重启插件宿主",
+	"No plugins installed.": "尚未安装插件。",
+	"Drop a .btp file into the plugins folder to install one.": "把 .btp 文件放进插件目录即可安装。",
+	"ENABLE": "启用",
+	"DISABLE": "停用",
+	"UNINSTALL": "卸载",
+	"UNINSTALL %s?": "确定卸载 %s？",
+	"Cannot be undone from inside the game.": "此操作无法在游戏内撤销。",
+	"Bot brain": "Bot 大脑",
+	"Waiting for the plugin host...": "等待插件宿主……",
+	"Plugins stay on this machine and are not sent to other players.": "插件仅在本机生效，不会同步给其他玩家。",
 }
 
 static func current() -> String:

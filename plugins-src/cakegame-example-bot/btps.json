@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "btpsVersion": "1.0",
+  "id": "com.kscm.cakegame.example-bot",
+  "name": "CakeGame Example Bot (Brawler)",
+  "version": "1.0.0",
+  "author": { "name": "kscm", "email": "qwertyuiop12365288@163.com" },
+  "description": "A reference CakeGame bot brain. Closes the distance, swings inside knife range, rolls out of a committed swing, and backs off to reload. Written in plain Python so it doubles as the smallest possible example of the cakegame.bot.brain hook.",
+  "license": "MIT",
+
+  "entry": { "python": "main.py" },
+  "runtimes": ["python"],
+
+  "permissions": ["cakegame.bot.brain", "cakegame.match.read", "host.ui.notify"],
+  "platforms": ["windows", "linux", "darwin"],
+  "hostApi": ">=1.0.0 <2.0.0",
+  "minHostVersion": "1.0.0",
+
+  "hooks": {
+    "onLoad":    { "handler": "on_load",    "priority": 100 },
+    "onEnable":  { "handler": "on_enable",  "priority": 100 },
+    "onDisable": { "handler": "on_disable", "priority": 100 },
+    "cakegame.bot.brain": { "handler": "bot_decide", "priority": 100 }
+  },
+
+  "settings": {
+    "preferred_range": { "type": "number", "default": 62, "description": "Distance this brain tries to hold." },
+    "aggression": { "type": "number", "default": 0.7, "description": "0 = kite, 1 = rush." }
+  },
+  "keywords": ["cakegame", "bot", "example"]
+}

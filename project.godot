@@ -22,6 +22,7 @@ InputSetup="*res://src/core/input_setup.gd"
 AudioDirector="*res://src/core/audio_director.gd"
 SceneRouter="*res://src/core/scene_router.gd"
 NetManager="*res://src/net/net_manager.gd"
+BtpsHost="*res://src/btps/btps_host.gd"
 
 [debug]
 
